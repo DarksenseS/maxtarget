@@ -1,0 +1,194 @@
+import time 
+start_time = time.time()
+import numpy as np  
+np.random.seed()
+
+nRb = 7       
+nTg = 5
+Kd=0.85
+Kp=0.15
+Nmax = np.ones(nTg, dtype=int)
+XYmin = 0
+XYmax = 10
+Rxy = (XYmax - XYmin) * np.random.random((nRb, 2)) - XYmin
+Rfi = 2*np.pi * np.random.random((nRb,1)) - np.pi
+Robots = np.hstack([Rxy, Rfi])
+Targets = (XYmax - XYmin) * np.random.random((nTg, 2)) - XYmin
+print('\n First placemnet Robots= \n', np.around(Robots, decimals=3))
+print('\n First placement Targets= \n', np.around(Targets, decimals=3))
+def D_RTdist(Robots, Targets, Kd=0.5, Kp=0.5):
+    d = np.zeros((len(Robots), len(Targets)), dtype=float)
+    f = np.zeros((len(Robots), len(Targets)), dtype=float)
+    p = np.zeros((len(Robots), len(Targets)), dtype=float)
+    
+    for i in range(len(Robots)): 
+        for j in range(len(Targets)): 
+            
+            d[i,j] = np.sqrt((Robots[i,0]-Targets[j,0])**2 + 
+                             (Robots[i,1]-Targets[j,1])**2)
+                 
+            f[i,j] = np.arctan2(Targets[j,1]-Robots[i,1], 
+                                Targets[j,0]-Robots[i,0])
+            
+            p[i,j] = f[i,j] - Robots[i,2]
+           
+            if p[i,j] > np.pi:
+                p[i,j] = p[i,j] - 2*np.pi
+            elif p[i,j] < -np.pi:
+                p[i,j] = p[i,j] + 2*np.pi   
+   
+
+    D = Kd*(1-d/d.max()) + Kp*np.abs(p/np.pi)  
+    return D, d, f, p
+def Target_selection_2(D, Nmax):
+
+    Di = D.copy()                                
+    Nobc = Nmax.copy()                           
+    
+    RTg = np.full(Di.shape[0], -1, dtype='int')  
+    
+    while np.any(RTg < 0) and np.any(Nobc > 0):  
+
+         
+        Ddj = np.zeros(Di.shape[0], dtype='float32')
+        Sdj = np.zeros(Di.shape[0], dtype='float32')
+        mTj = np.zeros(Di.shape[0], dtype='int')
+
+        for iR in range(Di.shape[0]):           
+            if RTg[iR] < 0:                     
+
+                    
+                mTiR = np.argmax(Di[iR,:])
+                   
+                vTiR = np.argmax(np.hstack([Di[iR, :mTiR], 0, Di[iR, mTiR+1:]]))
+                
+                Ddj[iR] = Di[iR, mTiR] - Di[iR, vTiR] 
+                Sdj[iR] = Di[iR, mTiR] + Ddj[iR]
+                mTj[iR] = mTiR
+
+        j = np.argmax(Sdj)                      
+        i = mTj[j]                               
+        RTg[j] = i
+        Nobc[i] -= 1  
+        
+            
+        Di[j,:]  = Di[j,:]*0                   
+        if Nobc[i] == 0:
+            Di[:,i] = Di[:,i]*0                
+
+    return RTg,  Nobc
+
+Nstp = 80                                        
+dt = 0.1                                        
+XYacc = 0.1                                      
+
+V = 0.5*np.random.random(Robots.shape[0]) + 0.5 
+w = 2.2*np.ones(Robots.shape[0], dtype=float)   
+
+   
+Trajectories = [Robots.tolist()]                          
+    
+RTg = np.full(Robots.shape[0], -1, dtype='int')    
+RTgs = [RTg.tolist()] 
+    
+running = True 
+while running:      
+    D,d,f,p = D_RTdist(Robots, Targets, Kd, Kp)   
+    
+       
+    RTg, Nobc = Target_selection_2(D, Nmax)      
+        
+    j = RTg >= 0                               
+    
+    Robots[j,2] = Robots[j,2] + w[j]*dt*p[j,RTg[j]]       
+    
+       
+    XY = Robots[:,:2].copy()                              
+    XY[j,0] = Robots[j,0] + V[j]*np.cos(Robots[j,2])*dt   
+    XY[j,1] = Robots[j,1] + V[j]*np.sin(Robots[j,2])*dt    
+    
+        
+    jp = ( (XY[:,0] > XYmin) & (XY[:,0] < XYmax) & 
+           (XY[:,1] > XYmin) & (XY[:,1] < XYmax) )
+    
+        
+    jt = j.copy()   
+    for i, k in enumerate(j):
+        if k:                                    
+            jt[i] = ( (abs(XY[i,0]-Targets[RTg[i],0]) > XYacc) |
+                      (abs(XY[i,1]-Targets[RTg[i],1]) > XYacc) )
+        else:
+            jt[i] = False      
+    
+    Robots[jt & jp,:2] = XY[jt & jp]           
+         
+       
+    Trajectories.append(Robots.tolist()) 
+    RTgs.append(RTg.tolist()) 
+    
+    if len(Trajectories) >= Nstp: 
+        running = False 
+
+import matplotlib.pyplot as plt
+
+def RisPole(Pole_width=6, Pole_height=6, Title='Poly',
+            XYmin=XYmin, XYmax=XYmax):
+
+    fig, ax = plt.subplots()
+    fig.set_figwidth(Pole_width)          
+    fig.set_figheight(Pole_height)       
+
+    ax.set_title(Title, color='b', fontsize=16)
+    ax.set_xlabel('X',fontsize=12, color='b')
+    ax.set_ylabel('Y',fontsize=12, color='b')
+    ax.set_xlim(XYmin-0.5, XYmax+0.5)
+    ax.set_xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    ax.set_xticklabels(['0','1','2','3','4','5','6','7','8','9','10'], 
+                        fontsize=10, color='b')
+    ax.set_ylim(XYmin-0.5, XYmax+0.5)
+    ax.set_yticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    ax.set_yticklabels(['0','1','2','3','4','5','6','7','8','9','10'], 
+                        fontsize=10, color='b')
+    return fig, ax
+
+
+
+  
+
+  
+n_stp = 1      
+Vtgt = {'color':'r', 'marker':'o', 's':100, 
+        'edgecolors':'b', 'linewidths':2, 'alpha':0.8}
+
+Vrbt = {'width': 0.3, 'head_length':0.2, 'head_width':0.3,
+        'color':'m', 'alpha':0.5}    
+
+                             
+fig, ax = RisPole()
+ax.scatter(Targets[:,0], Targets[:,1], **Vtgt)
+
+
+RobXYfi = np.array(Trajectories[n_stp])
+
+Ax = 0.2*np.cos(RobXYfi[:,2])                  
+Ay = 0.2*np.sin(RobXYfi[:,2])
+
+for i in range(RobXYfi.shape[0]):
+    
+    ax.arrow(RobXYfi[i,0], RobXYfi[i,1],       
+             Ax[i],        Ay[i],                 
+             **Vrbt)                             
+    
+    ax.scatter(RobXYfi[i,0], RobXYfi[i,1], color='k',s=10)
+
+    plt.text(RobXYfi[i,0]+0.1, RobXYfi[i,1]+0.1,                 
+             str(i), color='g', fontsize=10)
+
+
+for i in range(RobXYfi.shape[0]):
+       
+    RTgi = RTgs[n_stp][i]
+    if RTgi >= 0:  
+        ax.plot([RobXYfi[i,0], Targets[RTgi,0]], 
+                [RobXYfi[i,1], Targets[RTgi,1]], '--c')
+plt.show()
