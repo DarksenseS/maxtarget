@@ -1,0 +1,99 @@
+Листинг кода в программной среде Python, отвечающий за движение платформы:
+class SendMessage():
+    def __init__(self):
+        self.send_first = False
+        self.send_second = False
+
+    def crate_msg(self, topic, msg):
+        message = [{"topic": topic, "payload": msg}]
+        return message
+
+    def send_first_msg(self, detect_first, message):
+        if self.send_first == False and detect_first == True:
+            publish.multiple(message, hostname="localhost")
+            self.send_first = True
+
+    def send_second_msgs(self, detect_second, message):
+        if self.send_second == False and detect_second == True:
+            publish.multiple(message, hostname="localhost")
+            self.send_second = True
+Следующая часть кода из скетча, который начинал и прекращал движение в зависимости от содержания сообщения.
+void callback(char* topic, byte* payload, unsigned int length)
+{
+char platformControlTopic[64];
+
+// sprintf(platformControlTopic, "platforms/%d", );
+
+if (strcmp(topic, platformControlTopic)==0)
+receivedData = "";
+sign = "";
+
+for (int i = 0; i < length; i++)
+{
+receivedData += (char)payload[i];
+}
+sign = receivedData[0];
+if (sign == "1")
+{
+ledcWrite(0,100);
+ledcWrite(3,100);
+}
+else if(sign == "0")
+{
+ledcWrite(0,0);
+ledcWrite(3,0);
+}
+}
+Часть кода отвечающая за поиск и распознавание маркера:
+class ArucoDetect:
+    def __init__(self, first_id, second_id):
+        self.aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
+        self.parameters = aruco.DetectorParameters_create()
+        self.corners = None
+        self.ids = None
+        self.rejectedImgPoints = None
+        self.detect_1 = False
+        self.detect_2 = False
+        self.first_id = first_id
+        self.second_id = second_id
+
+    def img_to_gray(self, img):
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return gray
+
+    def detect_marker(self, gray):
+        self.corners, self.ids, self.rejectedImgPoints = aruco.detectMarkers(gray, self.aruco_dict,
+                                                                             parameters=self.parameters)
+    def draw_markers(self, img):
+        frame_markers = aruco.drawDetectedMarkers(img, self.corners, self.ids)
+        return frame_markers
+
+    def check_first_id(self):
+        if self.ids is not None:
+            for k in range(0, len(self.ids)):
+                if self.ids[k] == self.first_id:
+                    self.detect_1 = True
+        else:
+            self.detect_1 = False
+
+    def check_second_id(self):
+        if self.ids is not None:
+            for k in range(0, len(self.ids)):
+                if self.ids[k] == self.second_id:
+                    self.detect_2 = True
+        else:
+            self.detect_2 = Fals
+
+    def output(self):
+        if self.detect_1 and self.detect_2:
+            print("See both")
+        elif self.detect_1:
+            print("See id" + str(self.first_id) + " marker")
+            self.send_first_msgs()
+
+        elif self.detect_2:
+            print("See id" + str(self.second_id) + " marker")
+            self.send_second_msgs()
+        elif self.detect_1 == False and self.detect_2 == False:
+             print("Don't see markers")
+detect = ArucoDetect(5, 6)
